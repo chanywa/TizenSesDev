@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+	<header>
+		<meta charset="UTF-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+		<link rel="stylesheet" href="style.css">
+		<script src="base.js"></script>
+
+		<script type="text/javascript">
+			function response_callback(response) {
+				jobs = response['jobs']
+				updated_datetime = response['updated_datetime']
+				txt = "<table><tr><td class=datetime>Updated : " + updated_datetime + " (GMT+9)</td></tr><tr><td>"
+					+ "<table class=status><thead><tr><th rowspan=2>Testhub Job</th><th colspan=7>Status</th></tr>"
+					+ "<tr><th>Ratio</th><th>Total</th><th>Pass</th><th>Fail</th><th>Block</th><th>Skip</th><th>Datetime</th></tr></thead>";
+				for (i in jobs) {
+					var name = jobs[i].name
+					var summary = jobs[i].summary
+					var datetime = jobs[i].datetime
+					var url = jobs[i].test_url
+					if (summary != undefined) {
+						var ratio = parseInt(summary.pass / summary.total * 100)
+						if (ratio != 100) style_class = "warning"; else style_class = ""
+						txt += "<tr><td onclick=\"window.open('" + url + "','','')\" class='pointer'>" + name + "</td>"
+							+ "<td onclick=\"window.open('" + url + "/HTML_20Report','','')\" class='pointer " + style_class + "' style='text-align:right'>" + ratio + "%</td>"
+							+ "<td onclick=\"window.open('" + url + "/HTML_20Report','','')\" class='pointer " + style_class + "' style='text-align:right'>" + summary.total + "</td>"
+							+ "<td onclick=\"window.open('" + url + "/HTML_20Report','','')\" class='pointer " + style_class + "' style='text-align:right'>" + summary.pass + "</td>"
+							+ "<td onclick=\"window.open('" + url + "/HTML_20Report','','')\" class='pointer " + style_class + "' style='text-align:right'>" + summary.fail + "</td>"
+							+ "<td onclick=\"window.open('" + url + "/HTML_20Report','','')\" class='pointer " + style_class + "' style='text-align:right'>" + summary.block + "</td>"
+							+ "<td onclick=\"window.open('" + url + "/HTML_20Report','','')\" class='pointer " + style_class + "' style='text-align:right'>" + summary.nt + "</td>"
+							+ "<td onclick=\"window.open('" + url + "/HTML_20Report','','')\" class='pointer'>" + datetime +"</td>"
+					} else txt += "<tr><td>" + name + "</td><td colspan=7 style=\"text-align:center\">-</td>"
+					txt += "</tr>"
+				}
+				txt += "</table></td></tr></table>"
+				document.getElementById('body').innerHTML = txt
+			};
+
+			window.onload = function onload() {
+				init_page(null, function() {
+					show_loading_progress()
+					url = LOG_BASE_URL + "/testhub-status.json"
+					load_json(url, response_callback)
+				})
+			};
+		</script>
+	</header>
+	<body>
+		<div id=menu></div>
+		<div id=title>Testhub Status</div>
+		<div id=body></div>
+	</body>
+</html>

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+	<header>
+		<meta charset="UTF-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+		<link rel="stylesheet" href="style.css">
+		<script src="base.js"></script>
+
+		<script type="text/javascript">
+			function response_callback(response) {
+				// Parse JSON string into object
+				txt = "<p>Updated : " + response['updated_datetime'] + " (GMT+9)<p>"
+				txt += build_html_for_repos_status(response) + "<br>"
+				txt += build_html_for_teams_status(response) + "<br>"
+				txt += build_html_for_branch_protection_status(response)
+				document.getElementById('body').innerHTML = txt
+			}
+
+			function build_html_for_branch_protection_status(response) {
+				txt = "<h2 class=title>Branch Protection Status</h2>"
+					+ "<table class=status><thead><tr><th rowspan=3>Git</th>"
+					+ "<th colspan=" + (CONFIG.visible_release_count*3) + ">Branches</th></tr><tr>"
+
+				for (i = 0; i < CONFIG.visible_release_count; i++)
+					txt += "<th colspan=3>" + Object.values(CONFIG.releases)[i].branch + "</th>"
+				txt += "</tr><tr>"
+				for (i = 0; i < CONFIG.visible_release_count; i++)
+					txt += "<th style='font-size:0.8em'>Push<br>Protect</th><th style='font-size:0.8em'>Owner<br>Review</th><th style='font-size:0.7em'>Dismiss<br>Approval</th>"
+				txt += "</tr></thead>"
+
+				for (git_name in CONFIG.gits) {
+					branch_info = response.gits[git_name].branches
+					txt += "<tr><th>" + git_name + "</th>"
+					for (i = 0; i < CONFIG.visible_release_count; i++) {
+						branch_name = Object.values(CONFIG.releases)[i].branch
+						branch = branch_info[branch_name]
+						if (git && branch) {
+							txt += "<td align=center class='" + (branch.restricted == false && branch_name != 'ses' ? 'warning' : '') + (i % 2 ? ' odd' : '') + "'>"
+								+ (branch.restricted ? "O" : "X") + "</td>"
+							style_class = (branch_name == 'ses'
+								&& (branch.required_pull_request_reviews.require_code_owner_reviews == false ||
+								   (branch.required_pull_request_reviews.require_code_owner_reviews == true &&
+								    branch.code_owner_registered == false))) ? " warning" : ""
+							txt += "<td align=center class='" + style_class + (i % 2 ? ' odd' : '') + "'>"
+								+ (branch.required_pull_request_reviews.require_code_owner_reviews ? "O" : "X") + "</td>"
+								+  "<td align=center class='" + (branch.required_pull_request_reviews.dismiss_stale_reviews == false ? 'warning' : '') + (i % 2 ? ' odd' : '') + "'>"
+								+ (branch.required_pull_request_reviews.dismiss_stale_reviews ? "O" : "X") + "</td>"
+						} else
+							txt += "<td align=center colspan=3 class='" + (i % 2 ? ' odd' : '') + "'>-</td>"
+					}
+					txt += "</tr>"
+				}
+				txt += "</table>"
+					+  "<p><div style='font-size:0.9em'>* Push : Restrict who can push to matching branches<br>"
+					+  "* Owner review : Require review from Code Owners<br>"
+					+  "* Dismiss approval : Dismiss stale pull request approvals when new commits are pushed</div>"
+					+  "<p>"
+				return txt
+			}
+
+			function __get_group_lisp_name(git_name) {
+				for (var group of CONFIG.groups)
+					for (var git of group.gits)
+						if (git == git_name)
+							return group.lisp_name
+				return ''
+			}
+
+			function build_html_for_repos_status(response) {
+				txt = "<h2 class=title>Repository Status</h2>"
+					+ "<table class=status><thead><tr><th rowspan=2>Git Name</th><th rowspan=2>Public</th><th colspan=4>Merge button</th></tr>"
+					+ "<tr><th>Squash</th><th>Merge<br>commit</th><th>Rebase<br>merge</th></tr></thead>"
+
+				for (git_name in CONFIG.gits) {
+					repos_info = response.gits[git_name].repos
+					txt += "<tr><th class=pointer onclick=\"window.open('" + repos_info.html_url + "/settings','','')\">" + git_name + "</th>"
+						+  "<td align=center" + (repos_info.private ? " class=past>X" : ">O") + "</td>"
+					    +  "<td align=center" + (repos_info.allow_sqash_merge ? " class=past>O" : " class=odd>X") + "</td>"
+						+  "<td align=center" + (repos_info.allow_merge_commit ? " class=past>O" : ">X") + "</td>"
+						+  "<td align=center" + (repos_info.allow_rebase_merge ? " class=odd>O" : " class=past>X") + "</td>"
+					txt += "</tr>"
+				}
+				txt += "</table>"
+				return txt
+			}
+
+			function build_html_for_teams_status(response) {
+				txt = "<h2 class=title>Permission Status</h2>"
+					+ "<table class=status><thead><tr><th rowspan=2>Git</th><th rowspan=2>Public</th><th rowspan=2>Admin<br>permission</th><th colspan=2>Write permission</th><th>Read permission</th></tr>"
+					+ "<tr><th>Owner</th><th colspan=2>Collaborators</th></tr></thead>"
+
+				for (git_name in CONFIG.gits) {
+					git = CONFIG.gits[git_name]
+					git_info = response.gits[git_name]
+					txt += "<tr><th class=pointer onclick=\"window.open('" + git_info.html_url + "/settings/collaboration','','')\">" + git_name + "</th>"
+					txt += "<td align=center>" + (git_info.repos.private ? "X" : "O") + "</td>"
+
+					admins_txt = ""; owners_txt = ""; readers_txt = ""; writers_txt = ""
+					for (team_info of git_info.teams) {
+						if (team_info.name.search('staff') != -1) continue
+						link_tag = "<a href='" + team_info['html_url'] + "/members' target=_blank>" + team_info.name + "</a>"
+						if (team_info.permission == 'admin')
+							admins_txt += (admins_txt != "" ? '<br>' : '') + link_tag
+						else if (team_info.permission == 'push') {
+							group_lisp_name = self.__get_group_lisp_name(git_name)
+							if (team_info.name.startsWith(group_lisp_name) && team_info.name.endsWith('-Owner'))
+								owners_txt += (owners_txt != "" ? '<br>' : '') + link_tag
+							else
+								writers_txt += (writers_txt != "" ? '<br>' : '') + link_tag
+						}
+						else if (team_info.permission == 'pull')
+							readers_txt += (readers_txt != "" ? '<br>' : '') + link_tag
+					}
+					for (collabo_info of git_info.collaborators) {
+						link_tag = "<a href='" + collabo_info['html_url'] + "' target=_blank>" + collabo_info.name + "</a>"
+						if (collabo_info.permissions.admin == true)
+							admins_txt += (admins_txt != "" ? '<br>' : '') + link_tag
+						else if (collabo_info.permissions.push == true)
+							writers_txt += (writers_txt != "" ? '<br>' : '') + link_tag
+						else if (collabo_info.permissions.pull == true)
+							readers_txt += (readers_txt != "" ? '<br>' : '') + link_tag
+					}
+					txt += "<td class=odd>" + admins_txt + "</td><td>" + owners_txt + "</td><td class=odd>" + writers_txt + "</td><td>" + readers_txt + "</td>"
+					txt += "</tr>"
+				}
+				txt += "</table>"
+					+  "<p><div style='font-size:0.9em'>* All git repositories are including 'staff-All' team with read-permission"
+					+  " and 'super-staff-All' team with write-permission in common</div>"
+					+  "<p>"
+				return txt
+			}
+
+			window.onload = function onload() {
+				init_page(null, function() {
+					show_loading_progress()
+					url = LOG_BASE_URL + "/github-status.json"
+					load_json(url, response_callback)
+				})
+			};
+		</script>
+	</header>
+	<body>
+		<div id=menu></div>
+		<div id=title>GitHub Status</div>
+		<div id=branch></div>
+		<div id=body></div>
+	</body>
+</html>

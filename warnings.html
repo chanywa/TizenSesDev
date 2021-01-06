@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+	<header>
+		<meta charset="UTF-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+		<link rel="stylesheet" href="style.css">
+		<script src="base.js"></script>
+
+		<script type="text/javascript">
+
+			function draw_count_cell(git_name, count, type, error_type="") {
+				txt = "<td id=" + git_name + "_" + type + " class='center "
+					+ (count > 0 ? " pointer" : "")
+					+ (type.includes('doxygen') ? " odd" : "")
+					+ (type != "build_excluded" && count > 0 ? " warning" : "")
+					+ "'"
+					+ (count > 0 ? " onclick='window.open(\"?version=" + version + "&git=" + git_name + "&type=" + type + "\", \"_self\")'" : "")
+					+ ">" + count + "</td>"
+				return txt
+			}
+
+			var json_to_load = 0
+
+			function build_warnings_cb(response) {
+				build_logs = response.logs
+				build_datetime = response.updated_datetime
+				json_to_load -= 1
+				if (json_to_load == 0) update_page()
+			}
+
+			function doxygen_warnings_cb(response) {
+				doxygen_logs = response.logs
+				doxygen_datetime = response.updated_datetime
+				json_to_load -= 1
+				if (json_to_load == 0) update_page()
+			}
+
+			function update_page() {
+				txt = "<table><tr><td class=datetime>Updated : " + ( build_datetime > doxygen_datetime ? build_datetime : doxygen_datetime) + " (GMT+9)" + "</td></tr><tr><td>"
+					+ "<table class=status style='table-layout:fixed'><thead><tr><th rowspan=3 width=150 class=odd>Git</th>"
+					+ "<th colspan=2>Build</th><th colspan=2 class=odd>Doxygen</th><th colspan=3>API Description Review</th></tr>"
+					+ "<tr><th width=60px rowspan=2>Valid</th><th width=60px rowspan=2>Excluded<br><span style='font-size:0.9em'>(no need to fix)</span></th>"
+					+ "<th width=60px rowspan=2 class=odd>Native<br>API</th><th width=60px rowspan=2 class=odd>.NET<br>API</th><th width=60px colspan=3>Native API</th></tr>"
+					+ "<tr><th width=60px>Error</th><th width=60px>Note</th><th width=60px>Question</th></tr></thead>"
+					+ "</tr></thead>"
+
+				git_names = get_config_git_names(version)
+				for (git_name of git_names) {
+					txt += "<tr><th>" + git_name + "</th>"
+					log = build_logs.find(item => item.name == git_name)
+					txt += draw_count_cell(log.name, log.issue_count, "build_warning")
+						+  draw_count_cell(log.name, log.excluded_count, "build_excluded")					
+
+					log = doxygen_logs.find(item => item.name == git_name)
+					if (log && log.doxygen_native) txt += draw_count_cell(log.name, log.doxygen_native.length, "doxygen_native")
+					else txt += "<td class='center odd'>-</td>"
+					if (log && log.doxygen_dotnet) txt += draw_count_cell(log.name, log.doxygen_dotnet.length, "doxygen_dotnet")
+					else txt += "<td class='center odd'>-</td>"
+					if (log && log.review_native)
+						txt += draw_count_cell(log.name, log.review_native.filter(v => v.type == "error").length, "review_native_error")
+							+  draw_count_cell(log.name, log.review_native.filter(v => v.type == "note").length, "review_native_note")
+							+  draw_count_cell(log.name, log.review_native.filter(v => v.type == "question").length, "review_native_question")
+					else txt += '<td class=center>-</td><td class=center>-</td><td class=center>-</td>'
+					txt += "</tr>"
+				}
+				txt += "</table></td><td class=transparent valign=top style='background-color:black'><div id=log_messages></div><div id=log_excluded></div></td></tr>"
+
+				document.getElementById('body').innerHTML = txt
+			}
+
+			function show_build_log_callback(response) {
+				logs = response.split(/\r?\n/)
+				type = params['type']
+				title_postfix = {
+					'build_warning': "build warnings",
+					'build_excluded': "build warnings (Ignorable)"
+				}
+				txt = "<table><tr><td><h2 class=title>" + params['git'] + " " + title_postfix[type] + "</h2></td></tr><tr><td>"
+					+ "<table class=status><thead><tr><th>No</th><th colspan=2>Log messages</th></tr></thead>"
+				for (i in logs) {
+					txt += "<td>" + (Number(i) + 1) + "</td><td style='text-align:left'>" + html_entities(logs[i]) + "</td></tr>"
+				}
+				txt += "</table></td></tr></table>"
+				document.getElementById('body').innerHTML = txt
+			}
+
+			function show_doxygen_log_callback(response) {
+				language_list = { 'dotnet':'.NET', 'native':'native' }
+				type_list = { 'doxygen':'API description doxygen', 'review':'API description review' }
+				type = params['type']
+				types = type.split('_')
+				title = (types[1] ? language_list[types[1]] : "")
+				title += (title != "" ? " " : "") + (types[0] ? type_list[types[0]] : "")
+				title += (title != "" ? " " : "") + (types[2] ? types[2] : "") + " messages"
+				txt = "<table><tr><td><h2 class=title>" + params['git'] + " " + title + "</h2></td></tr><tr><td>"
+					+ "<table class=status><thead><tr><th>No</th><th>File Name</th><th>Line</th><th>Log messages</th></tr></thead>"
+
+				found = response.logs.filter(x => x.name == params.git)
+				if (found && found[0]) {
+					var logs = []
+					if ("doxygen_dotnet".includes(type)) logs = logs.concat(found[0].doxygen_dotnet)
+					if ("doxygen_native".includes(type)) logs = logs.concat(found[0].doxygen_native)
+					if ("review_native_error".includes(type)) logs = logs.concat(found[0].review_native.filter(x => x.type == "error"))
+					if ("review_native_note".includes(type)) logs = logs.concat(found[0].review_native.filter(x => x.type == "note"))
+					if ("review_native_question".includes(type)) logs = logs.concat(found[0].review_native.filter(x => x.type == "question"))
+					for (i in logs)
+						txt += "<td>" + (Number(i) + 1) + "</td><td style='text-align:left'>" + logs[i].file + "</td><td style='text-align:left'>" + logs[i].line + "</td><td style='text-align:left'>" + html_entities(logs[i].message) + "</td></tr>"
+				}
+				txt += "</table></td></tr></table>"
+				document.getElementById('body').innerHTML = txt
+			}
+
+			function show_log(git_name, type) {
+				show_loading_progress()
+				if (type == "build_warning" || type == "build_excluded") {
+					url = LOG_BASE_URL + version + "/build-warning/" + git_name + "-build-warning" + (type == "build_excluded" ? "-excluded" : "") + ".log"
+					load_file(url, show_build_log_callback)
+				} else {
+					url = LOG_BASE_URL + version + "/doxygen-warning.json"
+					load_json(url, show_doxygen_log_callback)
+				}
+			}
+
+			function change_version(value) {
+				show_loading_progress()
+				version = value
+				set_cookie("version", version, 365)
+				json_to_load = 2
+				load_json(LOG_BASE_URL + version + "/build-warning/summary.json", build_warnings_cb)
+				load_json(LOG_BASE_URL + version + "/doxygen-warning.json", doxygen_warnings_cb)
+			}
+
+			window.onload = function onload() {
+				init_page(null, function() {
+					params = get_params()
+					version = params['version'] ? params['version'] : get_cookie("version")
+					if (version == null) version = Object.keys(CONFIG.releases)[0]
+					draw_version_selection_menu(version);
+					if (params['git'])
+						show_log(params['git'], params['type'])
+					else
+						change_version(version);
+				})
+			};
+		</script>
+	</header>
+	<body>
+		<div id=menu></div>
+		<div id=title>Warning Messages</div>
+		<div id=version></div>
+		<div id=body></div>
+	</body>
+</html>

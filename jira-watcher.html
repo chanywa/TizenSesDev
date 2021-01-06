@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+	<header>
+		<meta charset="UTF-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+		<link rel="stylesheet" href="style.css">
+		<script src="base.js"></script>
+
+		<script type="text/javascript">
+			function response_callback(response) {
+				projects = response['project'];
+				txt = "<table class=transparent><thead><tr><td valign=top><table class=status><tr><th>JIRA Project</th><th>Issue Types</th></tr></thead>";
+				for (i in projects) {
+					var key = projects[i].key;
+					var issue_types = projects[i].issue_types;
+					txt += "<tr><td>" + key + "</td><td>";
+					for (j in issue_types) {
+						if (j > 0) txt += ", "; txt += issue_types[j];
+					}
+					txt += "</td></tr>";
+				}
+				txt += "</table></td><td></td>";
+
+				components = response['component'];
+				txt += "<td valign=top><table class=status><tr><th>JIRA Component</th><th>Auto-watchers by Component</th></tr>";
+				for (i in components) {
+					var component = components[i].name;
+					var watchers = components[i].watchers;
+					txt += "<tr><td>" + component + "</td><td style='text-align:left'>";
+					for (j in watchers) {
+						if (j > 0) txt += ", "; txt += watchers[j];
+					}
+					txt += "</td></tr>";
+				}
+				txt += "</table></td></tr></table>";
+				document.getElementById('body').innerHTML = txt;
+			};
+
+			window.onload = function onload() {
+				init_page()
+				show_loading_progress()
+				load_json(SVC_BASE_URL + "/config/jira-watcher.json", response_callback)
+			};
+		</script>
+	</header>
+	<body>
+		<div id=menu></div>
+		<div id=title>JIRA Auto-watcher Configuration</div>
+		<div id=body></div>
+	</body>
+</html>

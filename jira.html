@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+	<header>
+		<meta charset="UTF-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+		<link rel="stylesheet" href="style.css">
+		<script src="base.js"></script>
+
+		<script type="text/javascript">
+
+			function response_callback(response) {
+				// Parse JSON string into object
+				json_data = response;
+				txt = "<table><tr><td class=datetime>Updated : " + json_data['updated_datetime'] + " (GMT+9)</td></tr>"
+					+ "<tr><td><table valign=top class='status center' id=ahub_status><thead><th rowspan=2 width=150 class=odd>Service</th><th colspan=2>Feature</th><th colspan=2 class=odd>ACR</th><th colspan=2>Defect</th></tr>"
+					+ "<th width=60px>Unresolved</th><th width=60px>Done</th><th width=60px class=odd>Unresolved</th><th width=60px class=odd>Done</th><th width=60px>Unresolved</th><th width=60px>Done</th></tr></thead>"
+
+				var acrs = json_data['acrs']
+				var features = json_data['features']
+				var defects = json_data['defects']
+				var total_count = []
+				var feature_status_list = ["To Do", "In Progress", "Dev Done", "Test Done"]
+				var acr_status_list = ["Submitted", "API Review", "Privilege Review", "ACR Accept", "SDK Prepare", "Doc Prepare", "TCs Prepare", "ACR Approve", "Closed"]
+				var defect_status_list = ["Submitted", "Opened", "Reopened", "Resolved", "Closed"]
+
+				var groups = get_config_groups(version)
+				for (group of groups) {
+					txt += "<tr><th>" + group.name + "</th>"
+					var count_list = []
+					count_list[0] = count_all_issues(features, group.name, feature_status_list)
+					count_list[1] = count_all_issues(acrs, group.name, acr_status_list)
+					count_list[2] = count_all_issues(defects, group.name, defect_status_list)
+
+					for (i = 0; i < 3; i++) {
+						if (is_empty(count_list[i])) txt += "<td>-</td><td>-</td>"
+						else {
+							txt += "<td class='" + (count_list[i][0] > 0 ? " warning" : "") + (i % 2 ? " odd" : "") + "'>" + count_list[i][0] + "</td>"
+							    +  "<td class='" + (i % 2 ? " odd" : "") + "'>" + count_list[i][1] + "</td>"
+							if (is_empty(total_count[i])) total_count[i] = count_list[i]
+							else { total_count[i][0] += count_list[i][0]; total_count[i][1] += count_list[i][1] }
+						}
+					}
+					txt += "</tr>"
+				}
+
+				txt += "<thead><tr><th class=odd>Total</th>"
+				for (i = 0; i < 3; i++) {
+					if (is_empty(total_count[i])) txt += "<th>-</th><th>-</th>"
+					else txt += "<th" + (i % 2 ? " class=odd>" : ">") + total_count[i][0] + "</th><th" + (i % 2 ? " class=odd>" : ">") + total_count[i][1] + "</th>"
+				}
+				txt += "</tr></thead></table>"
+				document.getElementById('body').innerHTML = txt
+			}
+
+			function count_all_issues(issue_list, group_name, status_list) {
+				var count = [0, 0]
+				issues = Object.entries(issue_list).filter(it => it[0] == group_name)[0][1]['issues']
+				for (j = 0; j < status_list.length && issues; j++)
+					count[(j < 2 ? 0 : 1)] += count_issues_by_status(issues, status_list[j])
+				return count
+			}
+
+			function count_issues_by_status(issues, status) {
+				var count = 0
+				for (issue of issues) if (issue.status == status) count += 1
+				return count
+			}
+
+			function change_version(value) {
+				show_loading_progress()
+				version = value
+				set_cookie("version", version, 365)
+				url = LOG_BASE_URL + version + "/jira-status.json"
+				load_json(url, response_callback)
+			}
+
+			window.onload = function onload() {
+				init_page(null, function() {
+					params = get_params()
+					version = params['version'] ? params['version'] : get_cookie("version")
+					if (version == null) version = Object.keys(CONFIG.releases)[0]
+					change_version(version);
+					draw_version_selection_menu(version);
+				})
+			};
+		</script>
+	</header>
+	<body>
+		<div id=menu></div>
+		<div id=title>JIRA Status</div>
+		<div id=version></div>
+		<div id=body></div>
+	</body>
+</html>

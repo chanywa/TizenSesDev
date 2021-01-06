@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+	<header>
+		<meta charset="UTF-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+		<link rel="stylesheet" href="style.css">
+		<script src="base.js"></script>
+
+		<script type="text/javascript">
+
+			function response_callback(response) {
+				// Parse JSON string into object
+				json_data = response;
+				var acrs = json_data['acrs']
+				var total_count = []
+				var status_list = ["Submitted", "API Review", "Privilege Review", "ACR Accept", "SDK Prepare", "Doc Prepare", "TCs Prepare", "ACR Approve", "Closed"]
+				var status_len = status_list.length
+
+				txt = "<table class=transparent><tr><td class=datetime>Updated : " + json_data['updated_datetime'] + " (GMT+9)</td></tr><tr><td>"
+				    + "<table valign=top class=status><thead><th width=150 class=odd>Service</th>"
+				for (j = 0; j < status_len; j++) {
+					txt += "<th style='font-size:0.8em' width=50" + (j % 2 ? " class=odd>" : ">") + status_list[j].replace(' ', '<br>') + "</th>"
+					total_count[j] = 0
+				}
+				txt += "<th class=odd width=50>Total</th></tr></thead>"
+
+				var groups = get_config_groups(version)
+				for (group of groups) {
+					txt += "<tr><th>" + group.name + "</th>"
+					if (acrs) {
+						i = Object.keys(acrs).find(acr => acr == group.name)
+						for (j = 0; j < status_len; j++) {
+							try {
+								count = count_by_status(acrs[i]['issues'], status_list[j])
+								txt += "<td class='" + (count > 0 && j < status_len - 3 ? " warning" : "")
+									+  (count > 0 && j >= status_len - 3 && j < status_len - 1 ? " past" : "")
+									+  (j % 2 ? " odd" : "")
+									+  (count > 0 ? " pointer' onclick='window.location.href=\"?version=" + version + "&group=" + group.name + "&status=" + status_list[j] + "\"'" : "'")
+									+  ">" + count + "</td>"
+								total_count[j] += count
+							} catch {
+								txt += "<td>-</td>"
+							}
+						}
+						txt += "<th" + (acrs[i]['issues'].length > 0 ? " class=pointer onclick='window.location.href=\"?version=" + version + "&group=" + group.name + "\"'" : "") + ">" + acrs[i]['issues'].length + "</th>"
+					} else {
+						for (j = 0; j < status_len; j++) txt += "<td>-</td>"
+					}
+					txt += "</tr>"
+				}
+
+				txt += "<thead><tr><th class=odd>Total</th>"
+				for (j = 0; j < status_len; j++)
+					txt += "<th class='" + (j % 2 ? " odd" : "") + (total_count[j] > 0 ? " pointer' onclick='window.location.href=\"?version=" + version + "&status=" + status_list[j] + "\"'" : "'") + ">" + total_count[j] + "</th>"
+				txt += "<th class='odd pointer' onclick='window.location.href=\"?version=" + version + "&status=all\"'>" + total_count.reduce((prev,curr) => prev + curr)  + "</th></tr></thead>"
+					+  "</table></td></table>"
+				document.getElementById('body').innerHTML = txt
+			}
+
+			function count_by_status(issues, status) {
+				var count = 0
+				for (issue of issues) if (issue.status == status) count += 1
+				return count
+			}
+
+			function show_list_callback(response) {
+				var group = decodeURI(params['group'])
+				var status = decodeURI(params['status'])
+				var issues = new Array()
+
+				for (name in response.acrs)
+					if (group == "undefined" || group == name) issues = issues.concat(response.acrs[name].issues)
+				for (i = 0; i < issues.length; i++)
+					if (status != "undefined" && status != "all" && status != issues[i].status) issues.splice(i--, 1)
+				issues.sort((a,b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0))
+
+				txt = "<table><tr><td class=datetime>Updated : " + response.updated_datetime + " (GMT+9)" + "</td></tr><tr><td>"
+					+ "<table class=status><thead><tr><th>No.</th><th>Key</th><th>Service</th><th>Title</th><th>Status</th><th>Labels</th></tr></thead>"
+				for (i in issues) {
+					issue = issues[i]
+					var c_txt = ""
+					for (c of issue.components) c_txt += (c_txt != "" ? "<br>" : "") + c.name
+					txt += "<tr><td>" + (Number(i) + 1) + "</td><td><a href='http://code.sec.samsung.net/jira/browse/" + issue.key + "' target=_blank>" + issue.key + "</td>"
+						+  "<td>" + c_txt + "</td><td align=left>" + issue.title + "</td><td>" + issue.status + "</td><td>"
+					for (label of issue.labels) txt += "<div class=label>" + label + "</div>"
+					txt += "</td></tr>"
+				}
+				txt += "</table></td></tr></table>"
+				document.getElementById('body').innerHTML = txt
+			}
+
+			function show_list() {
+				show_loading_progress()
+				url = LOG_BASE_URL + version + "/jira-status.json"
+				load_json(url, show_list_callback)
+			}
+
+			function change_version(value) {
+				show_loading_progress()
+				version = value
+				set_cookie("version", version, 365)
+				url = LOG_BASE_URL + version + "/jira-status.json"
+				load_json(url, response_callback)
+			}
+
+			window.onload = function onload() {
+				init_page(null, function() {
+					params = get_params()
+					version = params['version'] ? params['version'] : get_cookie("version")
+					if (version == null) version = Object.keys(CONFIG.releases)[0]
+					draw_version_selection_menu(version);
+					if (params['group'] || params['status']) show_list()
+					else change_version(version)
+				})
+			};
+		</script>
+	</header>
+	<body>
+		<div id=menu></div>
+		<div id=title>ACR Status</div>
+		<div id=version></div>
+		<div id=body></div>
+	</body>
+</html>

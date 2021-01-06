@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+	<header>
+		<meta charset="UTF-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+		<link rel="stylesheet" href="style.css">
+		<script src="base.js"></script>
+
+		<script type="text/javascript">
+			function response_callback(response) {
+				repos = response['project']
+				txt = "<table><tr><td class=datetime>&nbsp;</td></tr><tr><td>"
+					+ "<table class=status><thead><th>Name</th><th>Source upload</th><th>Excluded path</th></tr></thead>"
+
+				git_names = get_config_git_names(version)
+				for (git_name of git_names) {
+					txt += "<tr><th>" + git_name + "</th>"
+					repo = Object.values(repos).find(x => x.name == git_name)
+					if (repo) {
+						txt += "<td>" + (repo.private == true ? "X" : "O") + "</td><td align=left>"
+						sub_txt = ""
+						for (i in repo.exclude) sub_txt += (sub_txt != "" ? "<br>" : "") + repo.exclude[i]
+						txt += sub_txt + "</td></tr>"
+					} else {
+						txt += "<td></td><td></td></tr>"
+					}
+				}
+				txt += "</table></td></tr></table>"
+				document.getElementById('body').innerHTML = txt
+			};
+
+			function change_version(value) {
+				show_loading_progress()
+				version = value
+				set_cookie("version", version, 365)
+				url = "https://github.sec.samsung.net/pages/SES/Tools/config/ses-sam-config.json"
+				load_json(url, response_callback)
+			}
+
+			window.onload = function onload() {
+				init_page(null, function() {
+					version = get_cookie("version")
+					if (version == null) version = Object.keys(CONFIG.releases)[0]
+					change_version(version);
+					draw_version_selection_menu(version);
+				})
+			};
+		</script>
+	</header>
+	<body>
+		<div id=menu></div>
+		<div id=title>SAM Analysis Configuration</div>
+		<div id=version></div>
+		<div id=body></div>
+	</body>
+</html>

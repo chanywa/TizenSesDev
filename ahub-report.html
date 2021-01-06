@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+	<header>
+		<meta charset="UTF-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+		<link rel="stylesheet" href="style.css">
+		<script src="base.js"></script>
+
+		<script type="text/javascript">
+			function response_callback(response) {
+				// Parse JSON string into object
+				json_data = response;
+				txt = "<h2 style='margin-top:40px'>SVACE</h2>"
+					+ "<table class=status><thead><th rowspan=2 width=150 class=odd>Git</th><th rowspan=2 class=odd>Checker</th><th colspan=4>Result</th></tr>"
+					+ "<th>Critical</th><th class=odd>Major</th><th>BLOC</th><th class=odd>Report File URL</th></tr></thead>"
+
+				var analyses_total = filter_analyses(json_data['summary'].analyses, ['svace-cxx', 'svace-csharp'])
+				projects = json_data['projects']
+				for (var i in projects) {
+					var project_url = ( projects[i].id > 0 ? "https://code.sec.samsung.net/ahub/service/projects/" + projects[i].id : "" )
+					var analyses = filter_analyses(projects[i].analyses, ['svace-cxx', 'svace-csharp'])
+					var analyses_count = count_analyses(analyses, projects[i].is_excluded)
+					analyses_total = sum_analyses(analyses, analyses_total, projects[i].is_excluded)
+
+					if (analyses_count > 0) {
+						txt += "<p><tr><th" + (project_url != "" ? " class=\"pointer left odd\" onclick=\"window.open('" + project_url + "','','')\")" : "")
+							+  " rowspan=" + analyses_count + ">" + projects[i].name + "</th>"
+						for (var j = 0; j < analyses_count; j++) {
+							if (analyses[j]) {
+								if (j == 0) txt += "<th class=left>cxx</th>"
+								else if (j == 1) txt += "<tr><th class=left>csharp</th>"
+								txt += analysis_status(analyses[j])
+							}
+						}
+						txt += "</tr>"
+					} else {
+						txt += "<tr><th>" + projects[i].name + "</th><th>-</th><td colspan=3>-</td><td>-</td></tr>"
+					}
+				}
+				txt += "</td></tr><thead><tr><th colspan=2>Total</th>" + summary_status(analyses_total) + "</tr></thead></table>"
+				document.getElementById('body').innerHTML = txt
+			}
+
+			function response_callback_coverity(response) {
+				// Parse JSON string into object
+				json_data = response;
+				txt = "<h2 style='margin-top:40px'>Coverity</h2>"
+					+ "<table class=status><thead><th rowspan=2 width=150 class=odd>Git Name</th><th colspan=4>Result</th></tr>"
+					+ "<th>Critical</th><th class=odd>Major</th><th>BLOC</th><th class=odd>Report File URL</th></tr></thead>"
+
+				var analyses_total = filter_analyses(json_data['summary'].analyses, ['coverity'])
+				projects = json_data['projects']
+				for (var i in projects) {
+					var project_url = ( projects[i].id > 0 ? "https://code.sec.samsung.net/ahub/service/projects/" + projects[i].id : "" )
+					var analyses = filter_analyses(projects[i].analyses, ['coverity', 'svace-cxx'])
+					var analyses_count = count_analyses(analyses, projects[i].is_excluded)
+					analyses_total = sum_analyses(analyses, analyses_total, projects[i].is_excluded)
+
+					if (analyses_count > 0 && analyses[0]) {
+						analyses[0].bloc = analyses[1].bloc
+						txt += "<p><tr><th" + (project_url != "" ? " class='pointer left' onclick=\"window.open('" + project_url + "','','')\")" : "")
+							+  ">" + projects[i].name + "</th>"
+						txt += analysis_status(analyses[0])
+						txt += "</tr>"
+					} else {
+						txt += "<tr><th>" + projects[i].name + "</th><td></td><td class=odd>-</td><td></td><td class=odd>-</td></tr>"
+					}
+				}
+				txt += "</td></tr><thead><tr style='border-size:2pt'><th>Total</th>" + summary_status(analyses_total) + "</tr></thead></table>"
+				document.getElementById('body').innerHTML += txt
+			}
+
+			function analysis_status(analysis) {
+				if (analysis != undefined) {
+					if (analysis.status == "SUCCESSFUL") {
+						txt = "<td class=\"status pointer" + (analysis.critical > 0 ? " warning" : "") + (analysis.is_latest == false ? " past" : "")
+							+ "\" onclick=\"window.open('" + analysis.report_url + "','','')\" title=\"" + analysis.datetime + "\">" + analysis.critical + "</td>"
+							+ "<td class=\"status pointer odd" + (((analysis.major / analysis.bloc) * 1000000 > 60) ? " warning" : "")
+							+                                (analysis.is_latest == false ? " past" : "") + "\""
+							+ " onclick=\"window.open('" + analysis.report_url + "','','')\" title=\"" + analysis.datetime + "\">" + analysis.major + "</td>"
+							+ "<td class=right>" + analysis.bloc + "</td>"
+							+ "<td class='left odd'><a href=" + analysis.report_url + " target=_blank>" + analysis.report_url + "</a></td>"
+					} else
+						txt = "<td></td><td class=\"status pointer odd\" onclick=\"window.open('" + analysis.log_url + "','','')\" title=\"" + analysis.datetime + "\">"
+							+ "<span style=\"color:red;font-weight:bold\">" + analysis.status + "</span></a></td><td></td><td class=odd></td>"
+				} else txt = "<td colspan=3>-</td><td>-</td>"
+				return txt
+			}
+
+			function summary_status(analyses) {
+				critical = analyses.reduce((accumulator,current) => accumulator + current.critical, 0)
+				major = analyses.reduce((accumulator,current) => accumulator + current.major, 0)
+				bloc = analyses.reduce((accumulator,current) => accumulator + current.bloc, 0)
+				ppm = (bloc != 0 ? ((major / bloc) * 1000000) : 0.0)
+				txt = "<th class=\"status" + (critical > 0 ? " warning" : "") + "\">" + critical + "</td>"
+					+ "<th class=\"status" + (ppm > 60 ? " warning" : "") + "\">" + ppm.toFixed(2) + " ppm</td>"
+					+ "<th class=\"status\" style='text-align:right'>" + bloc + "</td>"
+					+  "<th>-</td></tr>"
+				return txt
+			}
+
+			function filter_analyses(analyses, analyzerOrder) {
+				var analyses_filtered = new Array(analyzerOrder.length)
+				for (var i = 0; i < analyzerOrder.length; i++) {
+					for (var j in analyses) {
+						if (analyses[j] && analyses[j].analyzer == analyzerOrder[i]) {
+							analyses_filtered[i] = analyses[j]
+							break
+						}
+					}
+				}
+				return analyses_filtered
+			}
+
+			function count_analyses(analyses, is_excluded) {
+				analyses_count = 0
+				if (is_excluded != true)
+					for (j in analyses) if (analyses[j] != null) analyses_count += 1
+				return analyses_count
+			}
+
+			function sum_analyses(analyses, analyses_total, is_excluded) {
+				if (is_excluded == false) return analyses_total
+				for (var i = 0; i < analyses.length; i++) {
+					if (analyses[i] == undefined) continue
+					for (j = 0; j < analyses_total.length; j++) {
+						if (analyses_total[j].analyzer == analyses[i].analyzer) {
+							analyses_total[j].critical -= analyses[i].critical
+							analyses_total[j].major -= analyses[i].major
+							analyses_total[j].bloc -= analyses[i].bloc
+							break
+						}
+					}
+				}
+				return analyses_total
+			}
+
+			function change_version(value) {
+				show_loading_progress()
+				version = value
+				set_cookie("version", version, 365)
+				url = LOG_BASE_URL + version + "/ahub-status.json"
+				load_json(url, response_callback)
+				load_json(url, response_callback_coverity)
+			}
+
+			window.onload = function onload() {
+				init_page(null, function() {
+					version = get_cookie("version")
+					if (version == null) version = Object.keys(CONFIG.releases)[0]
+					change_version(version);
+					draw_version_selection_menu(version);
+				})
+			};
+		</script>
+	</header>
+	<body>
+		<div id=menu></div>
+		<div id=title>AnalysisHub Status (Report)</div>
+		<div id=version></div>
+		<div id=body></div>
+	</body>
+</html>

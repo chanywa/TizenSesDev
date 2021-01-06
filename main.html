@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+	<header>
+		<meta charset="UTF-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+		<link rel="stylesheet" href="style.css">
+		<script src="base.js"></script>
+
+		<script type="text/javascript">
+			var json_to_load = 0
+			var release = null
+			var ahub_status, api_status, agent_status, build_warning, doxygen_warning
+
+			function ahub_status_cb(response) {
+				ahub_status = response
+				json_to_load -= 1
+				if (json_to_load == 0) update_page()
+			}
+
+			function api_status_cb(response) {
+				api_status = response
+				json_to_load -= 1
+				if (json_to_load == 0) update_page()
+			}
+
+			function agent_status_cb(response) {
+				agent_status = response
+				json_to_load -= 1
+				if (json_to_load == 0) update_page()
+			}
+
+			function build_warning_cb(response) {
+				build_warning = response
+				json_to_load -= 1
+				if (json_to_load == 0) update_page()
+			}
+
+			function doxygen_warning_cb(response) {
+				doxygen_warning = response
+				json_to_load -= 1
+				if (json_to_load == 0) update_page()
+			}
+
+			function jira_status_cb(response) {
+				jira_status = response
+				json_to_load -= 1
+				if (json_to_load == 0) update_page()
+			}
+
+			function find_by_name(data, name) {
+				found = []
+				for (k in data) {
+					if (data[k].name == name)
+						found.push(data[k])
+				}
+				return found
+			}
+
+			function find_by_git_name(data, name) {
+				found = []
+				for (k in data) {
+					if (data[k].git_name == name)
+						found.push(data[k])
+				}
+				return found
+			}
+
+			function update_page() {
+				txt = "<table class='status nodatetime'><thead><tr><th>Service</th><th>Status</th><th>Git</th><th style='min-width:200px'>Status</th></tr></thead>"
+
+				groups = get_config_groups(version)
+				for (group of groups) {
+					txt += "<tr><th rowspan=" + group.gits.length + ">" + group.name + "</th><td rowspan=" + group.gits.length + ">"
+
+					sub_txt = ""
+					try {
+						issue_count = jira_status.features[group.name].issue_count
+						if (issue_count > 0)
+							sub_txt += (sub_txt != "" ? " " : "") + "<a href='feature.html?version=" + version + "&group=" + group.name + "'><div class='status-sticker pointer feature'>Feature <b>" + issue_count + "</b> issues</div></a>"
+
+						issue_count = jira_status.acrs[group.name].issue_count
+						if (issue_count > 0)
+							sub_txt += (sub_txt != "" ? " " : "") + "<a href='acr.html?version=" + version + "&group=" + group.name + "'><div class='status-sticker pointer acr'>ACR <b>" + issue_count + "</b> issues</div></a>"
+
+						issue_count = jira_status.defects[group.name].issue_count
+						if (issue_count > 0)
+							sub_txt += (sub_txt != "" ? " " : "") + "<a href='defect.html'><div class='status-sticker pointer defect'>Defect <b>" + issue_count + "</b> issues</div></a>"
+					} catch {
+					}
+					txt += sub_txt + "</td>"
+
+					for (git_name of group.gits) {
+						txt += "<th>" + git_name + "</th><td style='padding-top:0px;padding-bottom:0px'>"
+						sub_txt = ""
+
+						if (found = find_by_name(ahub_status.projects, git_name)) {
+							ahub = found[0]
+							if (ahub.critical > 0 || ahub.major > 0 || ahub.error > 0)
+								sub_txt += "<div class='status-sticker ahub'>AHUB "
+										+  (ahub.error > 0 ? "<b>" + ahub.error + "</b> err": "")
+										+  (ahub.critical > 0 ? "<b>" + ahub.critical + "</b> cri": "")
+										+  (ahub.major > 0 ? (ahub.critical > 0 ? ", " : "") + "<b>" + ahub.major + "</b> maj": "") + "</div>"
+						}
+
+						if (found = find_by_name(api_status.logs, git_name)) {
+							found_issue_count = 0
+							for (f of found) found_issue_count += f.issue_count
+							if (found_issue_count > 0)
+								sub_txt += "<a href='api.html'><div class='status-sticker pointer api'>API <b>" + found_issue_count + "</b> issues</div></a>"
+						}
+
+						if (found = find_by_name(agent_status.logs, git_name)) {
+							found_issue_count = 0
+							for (f of found) found_issue_count += f.issue_count
+							if (found_issue_count > 0)
+								sub_txt += "<a href='agent.html'><div class='status-sticker pointer agent'>Agent <b>" + found_issue_count + "</b> issues</div></a>"
+						}
+
+						if (found = find_by_name(build_warning.logs, git_name)) {
+							found_issue_count = 0
+							for (f of found) found_issue_count += f.issue_count
+							if (found_issue_count > 0)
+								sub_txt += "<a href='warnings.html?verion=" + version + "&git=" + git_name + "&type=build_warning'><div class='status-sticker pointer build'>Build <b>" + found_issue_count + "</b> warnings</div></a>"
+						}
+
+						if (found = find_by_name(doxygen_warning.logs, git_name)) {
+							found_doxygen_count = 0
+							found_review_count = 0
+							for (f of found) {
+								found_doxygen_count += f.doxygen_count
+								found_review_count += f.review_count
+							}
+							if (found_doxygen_count > 0)
+								sub_txt += "<a href='warnings.html?version=" + version + "&git=" + git_name + "&type=doxygen'><div class='status-sticker pointer doxygen'>Doxygen <b>" + found_doxygen_count + "</b> warnings</div></a>"
+							if (found_review_count > 0)
+								sub_txt += "<a href='warnings.html?version=" + version + "&git=" + git_name + "&type=review'><div class='status-sticker pointer doxygen'>API Review <b>" + found_review_count + "</b> warnings</div></a>"
+						}
+
+						txt += sub_txt
+						txt += "</td></tr>"
+					}
+				}
+				txt += "</table>"
+				document.getElementById('body').innerHTML = txt
+			}
+
+			function change_version(value) {
+				show_loading_progress()
+				version = value
+				set_cookie("version", version, 365)
+				json_to_load = 6
+				load_json(LOG_BASE_URL + version + "/ahub-status.json", ahub_status_cb)
+				load_json(LOG_BASE_URL + version + "/api-status.json", api_status_cb)
+				load_json(LOG_BASE_URL + version + "/agent-status.json", agent_status_cb)
+				load_json(LOG_BASE_URL + version + "/build-warning/summary.json", build_warning_cb)
+				load_json(LOG_BASE_URL + version + "/doxygen-warning.json", doxygen_warning_cb)
+				load_json(LOG_BASE_URL + version + "/jira-status.json", jira_status_cb)
+
+				for (i in CONFIG.releases) {
+					if (CONFIG.releases[i].version == version) {
+						release = CONFIG.releases[i]
+						break
+					}
+				}
+			}
+
+			window.onload = function onload() {
+				init_page(null, function() {
+					version = get_cookie("version")
+					if (version == null) version = Object.keys(CONFIG.releases)[0]
+					change_version(version)
+					draw_version_selection_menu(version);
+				})
+			};
+		</script>
+	</header>
+	<body>
+		<div id=menu></div>
+		<div id=title>Status</div>
+		<div id=version></div>
+		<div id=body></div>
+	</body>
+</html>

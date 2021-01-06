@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+	<header>
+		<meta charset="UTF-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+		<link rel="stylesheet" href="style.css">
+		<script src="base.js"></script>
+
+		<script type="text/javascript">
+			function response_callback(response) {
+				// Parse JSON string into object
+				json_data = response;
+				txt = "<table><tr><td class=datetime>Updated : " + json_data['updated_datetime'] + " (GMT+9)</td></tr><tr><td>"
+					+ "<table class=status><thead><tr><th width=150 class=odd>Git</th><th width=40>SAM<br>Score</th><th width=50 class=odd>Physical<br>LOC</th>"
+					+ "<th width=50>Code<br>LOC</th><th width=40 class=odd>CC<br>Score</th><th width=40>DC<br>Score</th><th width=40 class=odd>MCD<br>Score</th>"
+					+ "<th width=40>CBO<br>Score</th><th width=40 class=odd>LOC<br>Score</th><th width=40>GV<br>Score</th><th width=40 class=odd>PP<br>Score</th>"
+					+ "</tr></thead>"
+
+				projects = json_data['projects']
+				for (i in projects) {
+					var project_url = ( projects[i].id > 0 ? "https://analysishub.sec.samsung.net/service/projects/" + projects[i].id : "" )
+
+					txt += "<tr>"
+					if (project_url != "") txt += "<th class=pointer onclick=\"window.open('" + project_url + "','','')\")>"; else txt += "<th>"
+					txt += projects[i].name + "</th>"
+						+  "<td class='"    + (projects[i].sam ? __convert_score_to_html(projects[i].sam.project.score) : "'>-") + "</td>"
+						+  "<td class='odd" + (projects[i].sam ? "' align=right>" + parseInt(projects[i].sam.project.ploc).toLocaleString() : "'>-") + "</td>"
+						+  "<td class='"    + (projects[i].sam ? "' align=right>" + parseInt(projects[i].sam.project.cloc).toLocaleString() : "'>-") + "</td>"
+						+  "<td class='odd" + (projects[i].sam ? __convert_score_to_html(projects[i].sam.cc.score) : "'>-") + "</td>"
+						+  "<td class='"    + (projects[i].sam ? __convert_score_to_html(projects[i].sam.dc.score) : "'>-") + "</td>"
+						+  "<td class='odd" + (projects[i].sam ? __convert_score_to_html(projects[i].sam.mcd.score) : "'>-") + "</td>"
+						+  "<td class='"    + (projects[i].sam ? __convert_score_to_html(projects[i].sam.cbo.score) : "'>-") + "</td>"
+						+  "<td class='odd" + (projects[i].sam ? __convert_score_to_html(projects[i].sam.loc.score) : "'>-") + "</td>"
+						+  "<td class='"    + (projects[i].sam ? __convert_score_to_html(projects[i].sam.gv.score) : "'>-") + "</td>"
+						+  "<td class='odd" + (projects[i].sam ? __convert_score_to_html(projects[i].sam.pp.score) : "'>-") + "</td>"
+						+  "</tr>"
+				}
+				txt += "</table></td></tr></table>"
+				document.getElementById('body').innerHTML = txt
+			}
+
+			function __convert_score_to_html(score) {
+				return (score >= 0 && score < 4.0 ? " warning" : "") + "'>" + (score >= 0 ? score : "-")
+			}
+
+			function change_version(value) {
+				show_loading_progress()
+				version = value
+				set_cookie("version", version, 365)
+				url = LOG_BASE_URL + version + "/ahub-status.json"
+				load_json(url, response_callback)
+			}
+
+			window.onload = function onload() {
+				init_page(null, function() {
+					version = get_cookie("version")
+					if (version == null) version = Object.keys(CONFIG.releases)[0]
+					change_version(version);
+					draw_version_selection_menu(version);
+				})
+			};
+		</script>
+	</header>
+	<body>
+		<div id=menu></div>
+		<div id=title>SAM Status (from AnalysisHub)</div>
+		<div id=version></div>
+		<div id=body></div>
+	</body>
+</html>
